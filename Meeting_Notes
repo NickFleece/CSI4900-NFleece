@@ -1,9 +1,13 @@
-Plan:
+Project Title: Detecting DNS Exfiltration using Machine Learning
+
+Tentative Plan:
 - 2 Weeks : Research
 - 2 Weeks : Data preprocessing
 - 2 Weeks : Data Discretization
 - 2 Weeks : Design & Train Algorithm
 
-By Sept 25th:
+Sept 18 Meeting:
 - Research, look for Datasets, features of said dataset, and ML techniques used for detection
-- 
+- To setup full implementation plan for next week
+- DLP --> Data Loss Prevention
+- Final model must be able to withstand DNS exfiltration tests
