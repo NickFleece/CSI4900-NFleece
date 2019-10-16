@@ -1,3 +1,3 @@
-Possible Datasets:
--  [UNSW Sydney - 2019 Iodine and DET Tools - 3 600 000 urls](https://nozzle-data.sdn.unsw.edu.au/home)
--  [2016 Daily network traffic from a campus(?)](https://data.mendeley.com/datasets/zh3wnddzxy/2)
+Datasets being used:
+- Malicious data being generated using: https://github.com/PaulSec/DET
+- Benign data: https://www.unb.ca/cic/datasets/dos-dataset.html (may be noted that this only contains 60,000 DNS queries, the DDoS has much more)
