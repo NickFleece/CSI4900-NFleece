@@ -1,5 +1,7 @@
 import csv
 import random
+from scapy.all import *
+from scapy.layers.dns import DNSRR, DNS, DNSQR
 
 def shuffle_combine_files(file1Data, file2Data):
     file1headers = file1Data.pop(0)
@@ -42,6 +44,25 @@ def clean_file(fileName):
         writer.writerows(temp_data)
     return False
 
+def clean_pcap(pcapData):
+    names = []
+    for p in pcapData:
+        if p.qdcount > 0 and isinstance(p.qd, DNSQR):
+            name = p.qd.qname
+        elif p.ancount > 0 and isinstance(p.an, DNSRR):
+            name = p.an.rdata
+        else:
+            continue
+        print(p[DNS].id)
+        names.append(name)
+        break
+    return False
+
+def open_pcap(fileName):
+    file_pcap = f"../../Files/{fileName}.pcap"
+    packets = rdpcap(file_pcap)
+    return packets
+
 def main():
     selectedOption = input("Please enter one of these options:\n- 0: Clean data\n- 1: Combine and shuffle files\n")
     if selectedOption == '0':
@@ -58,4 +79,5 @@ def main():
         return None
     return None
 
-main()
+# main()
+clean_pcap(open_pcap("testing"))
