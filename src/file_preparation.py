@@ -17,67 +17,42 @@ def shuffle_combine_files(file1Data, file2Data):
             writer.writerows(joinedFileData)
     return None
 
-def load_file(fileName):
-    fileRows = []
-    with open(f"../../Files/{fileName}.csv") as csvfile:
-        readCSV = csv.reader(csvfile, delimiter=',')
-        for row in readCSV:
-            fileRows.append(row)
-    return fileRows
-
-def clean_file(fileName):
-    temp_data = []
+def clean_pcap(fileName):
     count = 0
-    new_id = 1
-    with open(f"../../Files/{fileName}.csv") as csvfile:
-        readCSV = csv.reader(csvfile, delimiter=',')
-        for row in readCSV:
-            count += 1
-            if (count % 10000 == 0):
-                print(count)
-            if (row[4] == 'DNS' and row[7] == 'Message is a query' ):
-                row[0] = new_id
-                temp_data.append(row)
-                new_id += 1
-    with open(f"../../Files/cleaned_{fileName}.csv", 'w', newline='') as writeFile:
-        writer = csv.writer(writeFile)
-        writer.writerows(temp_data)
-    return False
-
-def clean_pcap(pcapData):
-    names = []
-    for p in pcapData:
+    clean_packets = []
+    for p in PcapReader(f"../../Files/{fileName}.pcap"):
+        count += 1
+        if count % 10000 == 0:
+            clean_number = '{:,}'.format(count)
+            print(f"Cleaned {clean_number}")
+        #conditions for not caring about the packet:
+        #1. Does not have DNS layer
+        #2. Is a response (only care about queries
+        #3. Response is not an OK from the server
+        if not p.haslayer(DNS) or p.ancount > 0 or p[DNS].rcode != 0:
+            continue
         if p.qdcount > 0 and isinstance(p.qd, DNSQR):
             name = p.qd.qname
-        elif p.ancount > 0 and isinstance(p.an, DNSRR):
-            name = p.an.rdata
+            type = p.qd.qtype
         else:
             continue
-        print(p[DNS].id)
-        names.append(name)
-        break
-    return False
+        if name != None and type in [1, 28]:
+            clean_packets.append(p)
+            if len(clean_packets) > 10000:
+                write_packets(fileName, clean_packets)
+                clean_packets = []
+    write_packets(fileName, clean_packets)
 
-def open_pcap(fileName):
-    file_pcap = f"../../Files/{fileName}.pcap"
-    packets = rdpcap(file_pcap)
-    return packets
-
-def main():
-    selectedOption = input("Please enter one of these options:\n- 0: Clean data\n- 1: Combine and shuffle files\n")
-    if selectedOption == '0':
-        clean_file("packets2")
-    elif selectedOption == '1':
-        # file1 = input("File 1:")
-        # file2 = input("File 2:")
-        file1 = "cleaned_malicious"
-        file2 = "cleaned_benign"
-        file1_data = load_file(file1)
-        file2_data = load_file(file2)
-        shuffle_combine_files(file1_data, file2_data)
-    else:
-        return None
-    return None
+def write_packets(fileName, packets):
+    print(f"Writing {len(packets)} packets to pcap...")
+    wrpcap(f"../../Files/{fileName}_cleaned.pcap", packets, append=True)
+    # count = 0
+    # for p in packets:
+    #     count += 1
+    #     if count % 1000 == 0:
+    #         clean_number = '{:,}'.format(count)
+    #         print(f"Wrote {clean_number} / {len(packets)}")
+    #     wrpcap(f"../../Files/{fileName}_cleaned.pcap", p, append=True)
 
 # main()
-clean_pcap(open_pcap("testing"))
+clean_pcap("appDDos_cleaned")
