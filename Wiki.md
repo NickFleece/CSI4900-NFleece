@@ -4,8 +4,8 @@ Datasets being used:
 
 Features:
 - Specifically for packets:
-  - Length of the concatenated string
-  - Entropy of the concatenated string
+  - Length of the subdomain
+  - Entropy of the subdomain string
   - Ratios of:
     - Upper-case and lower-case letters vs the rest of the string
     - Alphabetic string vs the rest of the string
