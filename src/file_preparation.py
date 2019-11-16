@@ -5,9 +5,9 @@ from scapy.layers.ipsec import IP, UDP, IPv6
 import pandas as pd
 import glob
 import os
-import threading
-import queue
+from multiprocessing import Queue
 import datetime
+import multiprocessing
 
 def packets_to_csv(packets):
     totalData = []
@@ -90,7 +90,7 @@ def clean_pcap(file, queue=None):
     clean_packets = []
     for p in PcapReader(file):
         count += 1
-        if count % 10000 == 0:
+        if count % 1000 == 0:
             clean_number = '{:,}'.format(count)
             print(f"Cleaned {clean_number} -- {file}")
         # conditions for not caring about the packet:
@@ -107,7 +107,7 @@ def clean_pcap(file, queue=None):
         # make sure DNS query has a name and that it is a A or AAAA type
         if name != None and type in [1, 28]:
             clean_packets.append(p)
-            if len(clean_packets) > 1000:
+            if len(clean_packets) > 100:
                 if queue == None:
                     write_cleaned_packets(file, clean_packets)
                 else:
@@ -134,14 +134,15 @@ def clean_and_combine_pcap_files(directory):
 
     print("Combining all pcap files into one")
     files = glob.glob(directory + "/*/*.pcap")
-    que = queue.Queue()
+    que = Queue()
     threads = []
     for file in files:
         print(f"Starting processing on file {file}...")
-        thread = threading.Thread(target=clean_pcap, args=(file, que))
+        # thread = threading.Thread(target=clean_pcap, args=(file, que))
+        thread = multiprocessing.Process(target=clean_pcap, args=(file, que))
         thread.start()
         threads.append(thread)
-        while len(threads) == 1:
+        while len(threads) == 7:
             print("At max threads, waiting for one to finish...")
             while que.qsize() == 0:
                 print("Queue empty, waiting...")
@@ -152,7 +153,7 @@ def clean_and_combine_pcap_files(directory):
                 wrpcap(f"{directory}/combined.pcap", packets, append=True)
             print("Looking for threads to remove...")
             for t in threads:
-                if not t.isAlive():
+                if not t.is_alive():
                     print("Removing a thread...")
                     threads.remove(t)
 
@@ -171,9 +172,9 @@ def load_pcap(fileName, trueFileRoute=False):
         outputPackets.append(p)
     return outputPackets
 
-
-clean_and_combine_pcap_files("D:/traffic_data/Big_Files")
-# malicious_data = load_pcap("malicious")
-# benign_data = load_pcap("benign")
-# joined = shuffle_file_data(benign_data, malicious_data)
-# packets_to_csv(joined)
+if __name__ == '__main__':
+    clean_and_combine_pcap_files("D:/traffic_data/Big_Files")
+    # malicious_data = load_pcap("malicious")
+    # benign_data = load_pcap("benign")
+    # joined = shuffle_file_data(benign_data, malicious_data)
+    # packets_to_csv(joined)
