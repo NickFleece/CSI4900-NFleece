@@ -74,11 +74,11 @@ def fit_and_predict(clf, split_data):
     predicted = clf.predict(split_data["testing_features"])
 
     correct = 0
+    total = 0
     true_positives = 0
     true_negatives = 0
     false_positives = 0
     false_negatives = 0
-    total = 0
     for actualElem, predictedElem in zip(split_data["testing_tags"], predicted):
         if predictedElem > 0.5 and actualElem == 1:
             correct += 1
