@@ -1,4 +1,6 @@
+print("importing...")
 import random
+import multiprocessing
 from scapy.all import *
 from scapy.layers.dns import DNSRR, DNS, DNSQR
 from scapy.layers.ipsec import IP, UDP, IPv6
@@ -7,7 +9,7 @@ import glob
 import os
 from multiprocessing import Queue
 import datetime
-import multiprocessing
+print("done import!")
 
 def packets_to_csv(packets):
     totalData = []
@@ -87,17 +89,23 @@ def shuffle_file_data(benignPackets, maliciousPackets):
 
 def clean_pcap(file, queue=None):
     count = 0
+    dnsCount = 0
     clean_packets = []
+    print(f"Starting cleaning on file {file}...")
     for p in PcapReader(file):
         count += 1
-        if count % 1000 == 0:
+        if count % 5000 == 0:
             clean_number = '{:,}'.format(count)
             print(f"Cleaned {clean_number} -- {file}")
+        if count == 100000 and dnsCount == 0:
+            print("No dns packets in first 100,000: Not worth processing, Exiting")
+            break
         # conditions for not caring about the packet:
         # 1. Does not have DNS layer
-        # 2. Is a response (only care about queries)
-        # 3. Response is not an OK from the server
-        if not p.haslayer(DNS) or (p.ancount > 0 or p.nscount > 0 or p[DNS].ra != 0) or p[DNS].rcode != 0:
+        # 2. Response is not an OK from the server
+        if not p.haslayer(DNS):
+            continue
+        if p[DNS].rcode != 0:
             continue
         if p.qdcount > 0 and isinstance(p.qd, DNSQR):
             name = p.qd.qname
@@ -107,7 +115,8 @@ def clean_pcap(file, queue=None):
         # make sure DNS query has a name and that it is a A or AAAA type
         if name != None and type in [1, 28]:
             clean_packets.append(p)
-            if len(clean_packets) > 100:
+            dnsCount += 1
+            if len(clean_packets) > 500:
                 if queue == None:
                     write_cleaned_packets(file, clean_packets)
                 else:
@@ -123,39 +132,58 @@ def write_cleaned_packets(fileName, packets):
     wrpcap(f"{fileName}_cleaned.pcap", packets, append=True)
 
 
-def clean_and_combine_pcap_files(directory):
+def clean_and_combine_pcap_files(directory, id):
     print(f"Combining pcap files at directory: {directory}")
 
     print("Making all files .pcap files...")
-    files = glob.glob(directory + "/*/*", recursive=True)
+    files = glob.glob(directory + "/*", recursive=True)
     for file in files:
         if file[-5:] != ".pcap":
             os.rename(file, file + ".pcap")
 
     print("Combining all pcap files into one")
-    files = glob.glob(directory + "/*/*.pcap")
+    files = glob.glob(directory + "/*.pcap")
     que = Queue()
     threads = []
+    prevTime = None
+    count = 0
     for file in files:
+        if prevTime != None:
+            currTime = datetime.datetime.now()
+            print(f"------------- Estimated time left: {(currTime - prevTime) * (len(files) - count)} : file {count} / {len(files)}")
+            prevTime = currTime
+        else:
+            prevTime = datetime.datetime.now()
+        count += 1
+
         print(f"Starting processing on file {file}...")
-        # thread = threading.Thread(target=clean_pcap, args=(file, que))
-        thread = multiprocessing.Process(target=clean_pcap, args=(file, que))
+        thread = threading.Thread(target=clean_pcap, args=(file, que))
+        # thread = multiprocessing.Process(target=clean_pcap, args=(file, que))
         thread.start()
         threads.append(thread)
-        while len(threads) == 7:
+        while len(threads) == 1:
             print("At max threads, waiting for one to finish...")
             while que.qsize() == 0:
-                print("Queue empty, waiting...")
-                time.sleep(1)
+                # print("Queue empty, waiting...")
+                time.sleep(3)
             while que.qsize() > 0:
                 packets = que.get()
                 print(f"Writing {len(packets)} to combined file - {datetime.datetime.now()}...")
-                wrpcap(f"{directory}/combined.pcap", packets, append=True)
+                wrpcap(f"{directory}/../combined_{id}.pcap", packets, append=True)
             print("Looking for threads to remove...")
             for t in threads:
                 if not t.is_alive():
                     print("Removing a thread...")
                     threads.remove(t)
+    for t in threads:
+        while t.is_alive():
+            time.sleep(3)
+            print("Waiting for all threads to die...")
+    while que.qsize() > 0:
+        packets = que.get()
+        print(f"Writing {len(packets)} to combined file - {datetime.datetime.now()}...")
+        wrpcap(f"{directory}/../combined_{id}.pcap", packets, append=True)
+    print("Done!")
 
 # loads a pcap into memory
 # THIS MAY TAKE A VERY LONG TIME FOR LARGE PCAP FILES
@@ -173,7 +201,14 @@ def load_pcap(fileName, trueFileRoute=False):
     return outputPackets
 
 if __name__ == '__main__':
-    clean_and_combine_pcap_files("D:/traffic_data/Big_Files")
+    print("Starting processing...")
+
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/BIG_PCAP",1)
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0250-0499",2)
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0500-0749",3)
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0750-0818",4)
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/random_files",5)
+
     # malicious_data = load_pcap("malicious")
     # benign_data = load_pcap("benign")
     # joined = shuffle_file_data(benign_data, malicious_data)
