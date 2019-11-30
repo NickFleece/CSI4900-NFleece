@@ -1,21 +1,29 @@
 import pandas as pd
 from sklearn.svm import SVC
 from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import IsolationForest
-import random
+import pickle
 
 def split_training_testing(ratio_training, data, onlyFeatures=True):
-    result = {
+    print("Splitting data into training & test pairs...")
+    splitFeatures = {
         "training_tags":[],
         "training_features":[],
         "testing_tags":[],
         "testing_features":[]
     }
+    splitData = {
+        "training":[],
+        "testing":[]
+    }
 
     num_training_elems = round(len(data) * ratio_training)
     for index,elem in data.iterrows():
+
+        dataRow = []
+        for _, i in elem.iteritems():
+            dataRow.append(i)
+
         row = {
             "tag":None,
             "features":[]
@@ -27,51 +35,63 @@ def split_training_testing(ratio_training, data, onlyFeatures=True):
             elif tag[:2] == "f_" or not onlyFeatures:
                 row["features"].append(i)
 
-        if len(result["training_tags"]) >= num_training_elems:
-            result["testing_features"].append(row["features"])
-            result["testing_tags"].append(row["tag"])
+        if len(splitFeatures["training_tags"]) >= num_training_elems:
+            splitFeatures["testing_features"].append(row["features"])
+            splitFeatures["testing_tags"].append(row["tag"])
+            splitData["testing"].append(dataRow)
         else:
-            result["training_features"].append(row["features"])
-            result["training_tags"].append(row["tag"])
+            splitFeatures["training_features"].append(row["features"])
+            splitFeatures["training_tags"].append(row["tag"])
+            splitData["training"].append(dataRow)
 
-    return result
+    calculate_ratios(splitFeatures)
+
+    print("Splitting done!")
+    return splitFeatures, splitData
 
 def GBT(fileName):
     print("Running GBT...")
     data = load_file(fileName)
-    split_data = split_training_testing(0.7, data)
 
-    clf = GradientBoostingRegressor()
-    return fit_and_predict(clf, split_data)
+    clf = GradientBoostingRegressor(verbose=True)
+    return fit_and_predict(clf, data, "GBT")
 
 def RF(fileName):
     print("Running Random Forest...")
     data = load_file(fileName)
-    split_data = split_training_testing(0.7, data)
 
-    clf = RandomForestClassifier(n_estimators=100)
-    return fit_and_predict(clf, split_data)
+    clf = RandomForestClassifier(n_estimators=100, verbose=True)
+    return fit_and_predict(clf, data, "RF")
 
 def SVM(fileName):
     print("Running SVM...")
     data = load_file(fileName)
-    split_data = split_training_testing(0.7, data)
 
-    clf = SVC(gamma='auto')
-    return fit_and_predict(clf, split_data)
+    clf = SVC(gamma='auto', verbose=True)
+    return fit_and_predict(clf, data, "SVM")
 
-def IFOREST(fileName):
-    print("Running Isolation Forest...")
-    data = load_file(fileName)
-    split_data = split_training_testing(0.7, data)
+def fit_and_predict(clf, data, type):
+    split_features, split_data = split_training_testing(0.7, data)
+    feature_tags = []
+    for i in data:
+        feature_tags.append(i)
 
-    clf = IsolationForest(contamination="auto" , behaviour="new")
-    return fit_and_predict(clf, split_data)
+    print("Fitting...")
+    clf.fit(split_features["training_features"], split_features["training_tags"])
 
-def fit_and_predict(clf, split_data):
-    clf.fit(split_data["training_features"], split_data["training_tags"])
-
-    predicted = clf.predict(split_data["testing_features"])
+    print("Predicting...")
+    predicted = []
+    if type == "GBT":
+        predicted = clf.predict(split_features["testing_features"])
+        confidence = predicted
+    elif type == "SVM":
+        predicted = clf.predict(split_features["testing_features"])
+        print("Calculating confidence score...")
+        confidence = clf.decision_function(split_features["testing_features"])
+    elif type == "RF":
+        predicted = clf.predict(split_features["testing_features"])
+        print("Calculating confidence score...")
+        confidence = clf.predict_proba(split_features["testing_features"])
 
     correct = 0
     total = 0
@@ -79,7 +99,8 @@ def fit_and_predict(clf, split_data):
     true_negatives = 0
     false_positives = 0
     false_negatives = 0
-    for actualElem, predictedElem in zip(split_data["testing_tags"], predicted):
+    results = []
+    for dataFeatures, actualElem, predictedElem, confidenceScore in zip(split_data["testing"], split_features["testing_tags"], predicted, confidence):
         if predictedElem > 0.5 and actualElem == 1:
             correct += 1
             true_positives += 1
@@ -92,15 +113,28 @@ def fit_and_predict(clf, split_data):
             false_negatives += 1
         total += 1
 
-    percentCorrect = correct / total
+        featureDict = {
+            "actualTag": actualElem,
+            "predictedTag": predictedElem,
+            "confidenceScore": confidenceScore
+        }
+        for tag, feature in zip(feature_tags, dataFeatures):
+            if tag not in ["Unnamed:0", "Unnamed:0.1", "malicious"]:
+                featureDict[tag] = feature
+        results.append(featureDict)
+
+    df = pd.DataFrame(results)
+    df.to_csv(f"../model_results/{type}.csv")
+
+    result = {
+        "accuracy": correct / total,
+        "precision": true_positives / (true_positives + false_positives),
+        "recall": true_positives / (true_positives + false_negatives)
+    }
     print(f"False Positives: {false_positives}\nFalse Negatives: {false_negatives}")
-    print(f"{correct} correct / {total} total = {percentCorrect * 100}%")
+    print(f"{correct} correct / {total} total = {result['accuracy'] * 100}%")
 
-    zipped = zip(split_data["testing_tags"], predicted)
-    dframe = pd.DataFrame(data=zipped)
-    dframe.to_csv("../test.csv")
-
-    return percentCorrect
+    return result, clf
 
 def load_file(fileName):
     data = pd.read_csv(f"../data/{fileName}.csv")
@@ -122,13 +156,31 @@ def calculate_ratios(split_data):
     ratio = count / len(split_data["testing_tags"])
     print(f"Ratio testing: {count} / {len(split_data['testing_tags'])} = {ratio}")
 
-svm_pct = SVM("full_data_features")
-gbt_pct = GBT("full_data_features")
-rf_pct = RF("full_data_features")
-i_forest = IFOREST("full_data_features")
+svm_result, svm_clf = SVM("full_data_features")
+gbt_result, gbt_clf = GBT("full_data_features")
+rf_result, rf_clf = RF("full_data_features")
 
 print(f"\n\nOverview:"
-      f"\nSVM: {svm_pct}"
-      f"\nGBT: {gbt_pct}"
-      f"\nRF: {rf_pct}"
-      f"\nIForest: {i_forest}")
+      f"\nSVM: {svm_result['accuracy']}"
+      f"\nGBT: {gbt_result['accuracy']}"
+      f"\nRF: {rf_result['accuracy']}")
+
+scores = {
+    "Model": ["SVM", "GBT", "RF"],
+    "Accuracy": [svm_result["accuracy"], gbt_result["accuracy"], rf_result["accuracy"]],
+    "Precision": [svm_result["precision"], gbt_result["precision"], rf_result["precision"]],
+    "Recall": [svm_result["recall"], gbt_result["recall"], rf_result["recall"]],
+    "F-Score": []
+}
+for type in [svm_result, gbt_result, rf_result]:
+    f_score = 2 * ((type["precision"] * type["recall"]) / (type["precision"] + type["recall"]))
+    scores["F-Score"].append(f_score)
+scores_df = pd.DataFrame(scores)
+scores_df.to_csv("../model_results/total_scores.csv")
+
+with open("../models/svm", 'wb') as file:
+    pickle.dump(svm_clf, file)
+with open("../models/gbt", 'wb') as file:
+    pickle.dump(gbt_clf, file)
+with open("../models/rf", 'wb') as file:
+    pickle.dump(rf_clf, file)

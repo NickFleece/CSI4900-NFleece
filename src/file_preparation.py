@@ -15,7 +15,7 @@ def packets_to_csv(packets):
     totalData = []
 
     count = 0
-    print(f"Writing {len(packets)} packets to csv")
+    print(f"Writing to csv")
 
     for packet in packets:
         malicious = packet[0]
@@ -132,8 +132,9 @@ def write_cleaned_packets(fileName, packets):
     wrpcap(f"{fileName}_cleaned.pcap", packets, append=True)
 
 
-def clean_and_combine_pcap_files(directory, id):
+def clean_and_combine_pcap_files(directory):
     print(f"Combining pcap files at directory: {directory}")
+    h = abs(hash(directory))
 
     print("Making all files .pcap files...")
     files = glob.glob(directory + "/*", recursive=True)
@@ -169,7 +170,7 @@ def clean_and_combine_pcap_files(directory, id):
             while que.qsize() > 0:
                 packets = que.get()
                 print(f"Writing {len(packets)} to combined file - {datetime.datetime.now()}...")
-                wrpcap(f"{directory}/../combined_{id}.pcap", packets, append=True)
+                wrpcap(f"{directory}/../combined_{h}.pcap", packets, append=True)
             print("Looking for threads to remove...")
             for t in threads:
                 if not t.is_alive():
@@ -182,8 +183,41 @@ def clean_and_combine_pcap_files(directory, id):
     while que.qsize() > 0:
         packets = que.get()
         print(f"Writing {len(packets)} to combined file - {datetime.datetime.now()}...")
-        wrpcap(f"{directory}/../combined_{id}.pcap", packets, append=True)
+        wrpcap(f"{directory}/../combined_{h}.pcap", packets, append=True)
     print("Done!")
+
+def final_combine(directory):
+    print(f"Combining pcap files at directory: {directory}")
+    files = glob.glob(directory + "/*.pcap")
+    for file in files:
+        print(f"Parsing file: {file}")
+        packets = []
+        count = 0
+        for packet in PcapReader(file):
+            count += 1
+            packets.append(packet)
+            if len(packets) % 5000 == 0:
+                print(f"{count} packets parsed, writing...")
+                wrpcap(f"{directory}/all_combined.pcap", packets, append=True)
+                packets = []
+        print(f"Done file {file}, writing {len(packets)} remaining packets...")
+        wrpcap(f"{directory}/all_combined.pcap", packets, append=True)
+    print("Done!")
+
+#remove packets from malicious pcap that aren't actually malicious
+def clean_malicious(dir, file):
+    print(f"Cleaning malicious file: {file}")
+    new_packets = []
+    count = 0
+    for packet in PcapReader(f"{dir}{file}"):
+        count += 1
+        if len(new_packets) == 1000:
+            print(f"Writing 1000 packets, {count} packets total parsed")
+            wrpcap(f"{dir}cleaned_malicious.pcap", new_packets, append=True)
+            new_packets = []
+        if (packet.qd.qname).decode("utf-8")[-9:-5] == "a123":
+            new_packets.append(packet)
+    wrpcap(f"{dir}cleaned_malicious.pcap", new_packets, append=True)
 
 # loads a pcap into memory
 # THIS MAY TAKE A VERY LONG TIME FOR LARGE PCAP FILES
@@ -203,13 +237,18 @@ def load_pcap(fileName, trueFileRoute=False):
 if __name__ == '__main__':
     print("Starting processing...")
 
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/BIG_PCAP",1)
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0250-0499",2)
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0500-0749",3)
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0750-0818",4)
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/random_files",5)
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/BIG_PCAP")
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0250-0499")
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0500-0749")
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0750-0818")
+    # clean_and_combine_pcap_files("E:/Big_Data_Files/random_files")
+    # clean_and_combine_pcap_files("D:/traffic_data/Big_Files/appDDoS")
+    # clean_and_combine_pcap_files("D:/traffic_data/Big_Files/PCAP-03-11")
+    # final_combine("D:/traffic_data/Big_Files")
 
-    # malicious_data = load_pcap("malicious")
-    # benign_data = load_pcap("benign")
-    # joined = shuffle_file_data(benign_data, malicious_data)
-    # packets_to_csv(joined)
+    # clean_malicious("D:/traffic_data/malicious/", "malicious.pcap")
+
+    benign = load_pcap("D:/traffic_data/Big_Files/all_combined.pcap", True)
+    malicious = load_pcap("D:/traffic_data/malicious/cleaned_malicious.pcap", True)
+    shuffled = shuffle_file_data(benign, malicious)
+    packets_to_csv(shuffled)

@@ -14,30 +14,32 @@ def generate_features(
 
     data = pd.read_csv(f"../data/{csv_file_name}.csv")
     for i, row in data.iterrows():
+        if i % 10000 == 0:
+            print(f"Parsed {i} rows...")
 
         if subdomain_length:
-            subdomain_length = calculate_length_of_subdomain(row['questionName'])
-            data.set_value(i, 'f_subdomain_length', subdomain_length)
+            subdomain_length_val = calculate_length_of_subdomain(row['questionName'])
+            data.set_value(i, 'f_subdomain_length', subdomain_length_val)
 
         if entropy:
-            entropy = calculate_entropy(row['questionName'])
-            data.set_value(i, 'f_subdomain_entropy', entropy)
+            entropy_val = calculate_entropy(row['questionName'])
+            data.set_value(i, 'f_subdomain_entropy', entropy_val)
 
         if number_subdomains:
-            numSubdomains = calculate_number_subdomains(row['questionName'])
-            data.set_value(i, 'f_number_subdomains', numSubdomains)
+            number_subdomains_val = calculate_number_subdomains(row['questionName'])
+            data.set_value(i, 'f_number_subdomains', number_subdomains_val)
 
         if upper_ratio:
-            upperRatio = calculate_ratio_case_letters(row['questionName'], True)
-            data.set_value(i, 'f_ratio_upper_case', upperRatio)
+            upper_ratio_val = calculate_ratio_case_letters(row['questionName'], True)
+            data.set_value(i, 'f_ratio_upper_case', upper_ratio_val)
 
         if lower_ratio:
-            lowerRatio = calculate_ratio_case_letters(row['questionName'], False)
-            data.set_value(i, 'f_ratio_lower_case', lowerRatio)
+            lower_ratio_val = calculate_ratio_case_letters(row['questionName'], False)
+            data.set_value(i, 'f_ratio_lower_case', lower_ratio_val)
 
         if number_ratio:
-            numberRatio = calculate_ratio_numbers(row['questionName'])
-            data.set_value(i, 'f_ratio_numbers', numberRatio)
+            number_ratio_val = calculate_ratio_numbers(row['questionName'])
+            data.set_value(i, 'f_ratio_numbers', number_ratio_val)
 
     data.to_csv(f"../data/{csv_file_name}_features.csv")
 
@@ -77,6 +79,9 @@ def calculate_ratio_case_letters(url, isUpper):
             letterCount += 1
         totalCount += 1
 
+    if totalCount == 0:
+        totalCount = 1
+
     return letterCount / totalCount
 
 def calculate_ratio_numbers(url):
@@ -91,9 +96,13 @@ def calculate_ratio_numbers(url):
             numberCount += 1
         totalCount += 1
 
+    if totalCount == 0:
+        totalCount = 1
+
     return numberCount / totalCount
 
 #methods used by the feature generation
+
 
 def get_subdomains(url):
     url = url[2:-2] #remove trailing comma left over from preprocessing
@@ -108,7 +117,7 @@ def get_subdomains(url):
         elif url[-4:] in ['.lan', '.ide']:
             newurl = url[:-4]
         else:
-            print(f"Not sure how to get the subdomain of: {url}")
+            # print(f"Not sure how to get the subdomain of: {url}")
             return url
 
     #remove the www at the beginning
@@ -117,5 +126,28 @@ def get_subdomains(url):
 
     return newurl
 
+def clean_feature_dataset(file):
+    df = pd.read_csv(f"../data/{file}.csv")
+    clean = []
+    for i, row in df.iterrows():
+        try:
+            float(row['f_subdomain_length'])
+            float(row['f_number_subdomains'])
+            float(row['f_subdomain_entropy'])
+            float(row['f_ratio_upper_case'])
+            float(row['f_ratio_lower_case'])
+            float(row['f_ratio_numbers'])
+        except Exception as e:
+            print(f"Something went wrong with packet {i}: {e}")
+
+        # subdomain_length = True,
+        # number_subdomains = True,
+        # entropy = True,
+        # upper_ratio = True,
+        # lower_ratio = True,
+        # number_ratio = True
+
 #main
+glblCount = 0
 generate_features("full_data")
+# clean_feature_dataset("full_data_features")
