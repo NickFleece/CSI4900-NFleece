@@ -1,4 +1,3 @@
-print("importing...")
 import random
 import multiprocessing
 from scapy.all import *
@@ -9,13 +8,11 @@ import glob
 import os
 from multiprocessing import Queue
 import datetime
-print("done import!")
 
-def packets_to_csv(packets):
+def packets_to_csv(packets, returnArrayWithNoOutput = False):
     totalData = []
 
     count = 0
-    print(f"Writing to csv")
 
     for packet in packets:
         malicious = packet[0]
@@ -40,7 +37,7 @@ def packets_to_csv(packets):
                 "authoritativeFlag": packet[DNS].aa,
                 "truncationFlag": packet[DNS].tc,
 
-                "questionName": packet.qd.qname,
+                "questionName": str(packet.qd.qname),
                 "questionType": packet.qd.qtype,
 
                 # below is handled differently for responses vs queries
@@ -73,8 +70,11 @@ def packets_to_csv(packets):
             print(f"Error with packet, trying to send to address {packet.qd.qname}, with error: {e}")
             continue
 
-    df = pd.DataFrame(data=totalData)
-    df.to_csv("../data/full_data.csv")
+    if not returnArrayWithNoOutput:
+        df = pd.DataFrame(data=totalData)
+        df.to_csv("../data/full_data.csv")
+    else:
+        return totalData
 
 
 def shuffle_file_data(benignPackets, maliciousPackets):
@@ -210,14 +210,18 @@ def clean_malicious(dir, file):
     new_packets = []
     count = 0
     for packet in PcapReader(f"{dir}{file}"):
-        count += 1
-        if len(new_packets) == 1000:
-            print(f"Writing 1000 packets, {count} packets total parsed")
-            wrpcap(f"{dir}cleaned_malicious.pcap", new_packets, append=True)
-            new_packets = []
-        if (packet.qd.qname).decode("utf-8")[-9:-5] == "a123":
-            new_packets.append(packet)
-    wrpcap(f"{dir}cleaned_malicious.pcap", new_packets, append=True)
+        try:
+            count += 1
+            if len(new_packets) == 1000:
+                print(f"Writing 1000 packets, {count} packets total parsed")
+                wrpcap(f"{dir}cleaned_{file}", new_packets, append=True)
+                new_packets = []
+            if (packet.qd.qname).decode("utf-8")[-2] == "-":
+                packet.qd.qname = packet.qd.qname[:-2]
+                new_packets.append(packet)
+        except Exception as e:
+            print(f"{e}, skipping packet...")
+    wrpcap(f"{dir}cleaned_{file}", new_packets, append=True)
 
 # loads a pcap into memory
 # THIS MAY TAKE A VERY LONG TIME FOR LARGE PCAP FILES
@@ -234,21 +238,24 @@ def load_pcap(fileName, trueFileRoute=False):
         outputPackets.append(p)
     return outputPackets
 
-if __name__ == '__main__':
-    print("Starting processing...")
+def main():
+    if __name__ == '__main__':
+        print("Starting processing...")
 
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/BIG_PCAP")
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0250-0499")
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0500-0749")
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0750-0818")
-    # clean_and_combine_pcap_files("E:/Big_Data_Files/random_files")
-    # clean_and_combine_pcap_files("D:/traffic_data/Big_Files/appDDoS")
-    # clean_and_combine_pcap_files("D:/traffic_data/Big_Files/PCAP-03-11")
-    # final_combine("D:/traffic_data/Big_Files")
+        # clean_and_combine_pcap_files("E:/Big_Data_Files/BIG_PCAP")
+        # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0250-0499")
+        # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0500-0749")
+        # clean_and_combine_pcap_files("E:/Big_Data_Files/PCAP-01-12_0750-0818")
+        # clean_and_combine_pcap_files("E:/Big_Data_Files/random_files")
+        # clean_and_combine_pcap_files("D:/traffic_data/Big_Files/appDDoS")
+        #  ("D:/traffic_data/Big_Files/PCAP-03-11")
+        # final_combine("D:/traffic_data/Big_Files")
 
-    # clean_malicious("D:/traffic_data/malicious/", "malicious.pcap")
+        # clean_malicious("D:/traffic_data/malicious/", "lower_malicious.pcap")
 
-    benign = load_pcap("D:/traffic_data/Big_Files/all_combined.pcap", True)
-    malicious = load_pcap("D:/traffic_data/malicious/cleaned_malicious.pcap", True)
-    shuffled = shuffle_file_data(benign, malicious)
-    packets_to_csv(shuffled)
+        benign = load_pcap("D:/traffic_data/Big_Files/all_combined.pcap", True)
+        malicious = load_pcap("D:/traffic_data/malicious/cleaned_lower_malicious.pcap", True)
+        shuffled = shuffle_file_data(benign, malicious)
+        packets_to_csv(shuffled)
+
+# main()

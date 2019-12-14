@@ -1,6 +1,6 @@
 import pandas as pd
 from sklearn.svm import SVC
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import RandomForestClassifier
 import pickle
 
@@ -20,20 +20,7 @@ def split_training_testing(ratio_training, data, onlyFeatures=True):
     num_training_elems = round(len(data) * ratio_training)
     for index,elem in data.iterrows():
 
-        dataRow = []
-        for _, i in elem.iteritems():
-            dataRow.append(i)
-
-        row = {
-            "tag":None,
-            "features":[]
-        }
-
-        for tag, i in elem.iteritems():
-            if tag == 'malicious':
-                row["tag"] = i
-            elif tag[:2] == "f_" or not onlyFeatures:
-                row["features"].append(i)
+        dataRow, row =  get_packet_features(elem, onlyFeatures)
 
         if len(splitFeatures["training_tags"]) >= num_training_elems:
             splitFeatures["testing_features"].append(row["features"])
@@ -49,25 +36,43 @@ def split_training_testing(ratio_training, data, onlyFeatures=True):
     print("Splitting done!")
     return splitFeatures, splitData
 
+def get_packet_features(elem, onlyFeatures=True):
+    dataRow = []
+    for _, i in elem.iteritems():
+        dataRow.append(i)
+
+    row = {
+        "tag": None,
+        "features": []
+    }
+
+    for tag, i in elem.iteritems():
+        if tag == 'malicious':
+            row["tag"] = i
+        elif tag[:2] == "f_" or not onlyFeatures:
+            row["features"].append(i)
+
+    return dataRow, row
+
 def GBT(fileName):
     print("Running GBT...")
     data = load_file(fileName)
 
-    clf = GradientBoostingRegressor(verbose=True)
+    clf = GradientBoostingClassifier()
     return fit_and_predict(clf, data, "GBT")
 
 def RF(fileName):
     print("Running Random Forest...")
     data = load_file(fileName)
 
-    clf = RandomForestClassifier(n_estimators=100, verbose=True)
+    clf = RandomForestClassifier(n_estimators=100)
     return fit_and_predict(clf, data, "RF")
 
 def SVM(fileName):
     print("Running SVM...")
     data = load_file(fileName)
 
-    clf = SVC(gamma='auto', verbose=True)
+    clf = SVC(gamma='auto')
     return fit_and_predict(clf, data, "SVM")
 
 def fit_and_predict(clf, data, type):
@@ -156,31 +161,56 @@ def calculate_ratios(split_data):
     ratio = count / len(split_data["testing_tags"])
     print(f"Ratio testing: {count} / {len(split_data['testing_tags'])} = {ratio}")
 
-svm_result, svm_clf = SVM("full_data_features")
-gbt_result, gbt_clf = GBT("full_data_features")
-rf_result, rf_clf = RF("full_data_features")
+def load_models():
+    models = {
+        "svm": None,
+        "gbt": None,
+        "rf": None
+    }
+    for i in models.keys():
+        with open(f"../models/{i}", 'rb') as pickle_file:
+            models[i] = pickle.load(pickle_file)
+    return models
 
-print(f"\n\nOverview:"
-      f"\nSVM: {svm_result['accuracy']}"
-      f"\nGBT: {gbt_result['accuracy']}"
-      f"\nRF: {rf_result['accuracy']}")
+def predict_packet(pkt):
+    models = load_models()
+    data, row = get_packet_features(pkt)
+    features = []
+    for f in row['features']:
+        features.append(f.tolist()[0])
+    results = {}
+    for model in models.keys():
+        results[model] = models[model].predict([features])
+    return results
 
-scores = {
-    "Model": ["SVM", "GBT", "RF"],
-    "Accuracy": [svm_result["accuracy"], gbt_result["accuracy"], rf_result["accuracy"]],
-    "Precision": [svm_result["precision"], gbt_result["precision"], rf_result["precision"]],
-    "Recall": [svm_result["recall"], gbt_result["recall"], rf_result["recall"]],
-    "F-Score": []
-}
-for type in [svm_result, gbt_result, rf_result]:
-    f_score = 2 * ((type["precision"] * type["recall"]) / (type["precision"] + type["recall"]))
-    scores["F-Score"].append(f_score)
-scores_df = pd.DataFrame(scores)
-scores_df.to_csv("../model_results/total_scores.csv")
+def run_ML_train():
+    svm_result, svm_clf = SVM("full_data_features")
+    gbt_result, gbt_clf = GBT("full_data_features")
+    rf_result, rf_clf = RF("full_data_features")
 
-with open("../models/svm", 'wb') as file:
-    pickle.dump(svm_clf, file)
-with open("../models/gbt", 'wb') as file:
-    pickle.dump(gbt_clf, file)
-with open("../models/rf", 'wb') as file:
-    pickle.dump(rf_clf, file)
+    print(f"\n\nOverview:"
+          f"\nSVM: {svm_result['accuracy']}"
+          f"\nGBT: {gbt_result['accuracy']}"
+          f"\nRF: {rf_result['accuracy']}")
+
+    scores = {
+        "Model": ["SVM", "GBT", "RF"],
+        "Accuracy": [svm_result["accuracy"], gbt_result["accuracy"], rf_result["accuracy"]],
+        "Precision": [svm_result["precision"], gbt_result["precision"], rf_result["precision"]],
+        "Recall": [svm_result["recall"], gbt_result["recall"], rf_result["recall"]],
+        "F-Score": []
+    }
+    for type in [svm_result, gbt_result, rf_result]:
+        f_score = 2 * ((type["precision"] * type["recall"]) / (type["precision"] + type["recall"]))
+        scores["F-Score"].append(f_score)
+    scores_df = pd.DataFrame(scores)
+    scores_df.to_csv("../model_results/total_scores.csv")
+
+    with open("../models/svm", 'wb') as file:
+        pickle.dump(svm_clf, file)
+    with open("../models/gbt", 'wb') as file:
+        pickle.dump(gbt_clf, file)
+    with open("../models/rf", 'wb') as file:
+        pickle.dump(rf_clf, file)
+
+# run_ML_train()

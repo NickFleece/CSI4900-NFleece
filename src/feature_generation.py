@@ -1,6 +1,8 @@
 import math
 import pandas as pd
 import tldextract
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def generate_features(
         csv_file_name,
@@ -9,12 +11,17 @@ def generate_features(
         entropy = True,
         upper_ratio = True,
         lower_ratio = True,
-        number_ratio = True
+        number_ratio = True,
+        packetArray = None,
+        returnArrayWithNoOutput = False
     ):
 
-    data = pd.read_csv(f"../data/{csv_file_name}.csv")
+    if packetArray == None:
+        data = pd.read_csv(f"../data/{csv_file_name}.csv")
+    else:
+        data = pd.DataFrame(packetArray)
     for i, row in data.iterrows():
-        if i % 10000 == 0:
+        if i % 10000 == 5:
             print(f"Parsed {i} rows...")
 
         if subdomain_length:
@@ -41,7 +48,10 @@ def generate_features(
             number_ratio_val = calculate_ratio_numbers(row['questionName'])
             data.set_value(i, 'f_ratio_numbers', number_ratio_val)
 
-    data.to_csv(f"../data/{csv_file_name}_features.csv")
+    if not returnArrayWithNoOutput:
+        data.to_csv(f"../data/{csv_file_name}_features.csv")
+    else:
+        return data
 
     return True
 
@@ -148,6 +158,8 @@ def clean_feature_dataset(file):
         # number_ratio = True
 
 #main
-glblCount = 0
-generate_features("full_data")
-# clean_feature_dataset("full_data_features")
+def main():
+    generate_features("full_data")
+    clean_feature_dataset("full_data_features")
+
+# main()
